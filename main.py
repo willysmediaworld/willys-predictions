@@ -8,31 +8,43 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 # ==========================================
-# CONFIGURATION & API KEYS
+# CONFIGURATION & LEAGUE MAPS
 # ==========================================
 ODDS_API_KEY = "a25ddc2f3ceffcb7f959e224f6a40d4f"
 ADMIN_PASSWORD = "willys123"
 BOT_TOKEN = "8700629519:AAFUXLN7K7XrS0DTMQ_sULOnlAvLIHc-SrU"
 
-# Expanded leagues list to cover weekdays & weekends
-SPORTS_LEAGUES = [
-    'soccer_epl',
-    'soccer_spain_la_liga',
-    'soccer_germany_bundesliga',
-    'soccer_italy_serie_a',
-    'soccer_france_ligue_one',
-    'soccer_uefa_champs_league',
-    'soccer_uefa_europa_league',
-    'soccer_netherlands_eredivisie',
-    'soccer_portugal_primeira_liga'
-]
+# Mapping leagues to Countries & Emoji Flags
+LEAGUE_DETAILS = {
+    'soccer_epl': {'name': 'Premier League', 'country': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 England'},
+    'soccer_spain_la_liga': {'name': 'La Liga', 'country': '🇪🇸 Spain'},
+    'soccer_germany_bundesliga': {'name': 'Bundesliga', 'country': '🇩🇪 Germany'},
+    'soccer_italy_serie_a': {'name': 'Serie A', 'country': '🇮🇹 Italy'},
+    'soccer_france_ligue_one': {'name': 'Ligue 1', 'country': '🇫🇷 France'},
+    'soccer_uefa_champs_league': {'name': 'Champions League', 'country': '🇪🇺 UEFA'},
+    'soccer_uefa_europa_league': {'name': 'Europa League', 'country': '🇪🇺 UEFA'},
+    'soccer_netherlands_eredivisie': {'name': 'Eredivisie', 'country': '🇳🇱 Netherlands'},
+    'soccer_portugal_primeira_liga': {'name': 'Primeira Liga', 'country': '🇵🇹 Portugal'}
+}
 
 DEFAULT_DATA = {
-    "match1_name": "Liverpool vs Southampton",
-    "match1_tip": "Home Win (1) @ 1.28",
-    "match2_name": "Barcelona vs Mallorca",
-    "match2_tip": "Over 1.5 Goals @ 1.22",
-    "total_odds": "1.56",
+    "matches": [
+        {
+            "country": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 England",
+            "league": "Premier League",
+            "teams": "Liverpool vs Southampton",
+            "tip": "Home Win or Draw (1X)",
+            "odd": 1.22
+        },
+        {
+            "country": "🇪🇸 Spain",
+            "league": "La Liga",
+            "teams": "Barcelona vs Mallorca",
+            "tip": "Over 1.5 Goals",
+            "odd": 1.25
+        }
+    ],
+    "total_odds": "1.53",
     "sportybet_code": "PENDING",
     "affiliate_link": "https://www.sportybet.com",
     "last_updated": "Default"
@@ -56,37 +68,34 @@ def save_data(data):
 
 DATA = load_data()
 
+
 # ==========================================
-# AUTOMATED MATCH FETCHING ENGINE (STRICT TODAY FILTER)
+# AUTOMATED 99% BANKER ACCUMULATOR ENGINE
 # ==========================================
 def fetch_automated_predictions():
     global DATA
     selected_matches = []
+    accumulated_odds = 1.0
     
-    # Define time window: From now until 36 hours from now
     now_utc = datetime.now(timezone.utc)
     max_lookahead = now_utc + timedelta(hours=36)
     
-    for league in SPORTS_LEAGUES:
-        if len(selected_matches) >= 2:
-            break
+    for league_key, details in LEAGUE_DETAILS.items():
+        if accumulated_odds >= 1.50 and len(selected_matches) >= 2:
+            break # Reached target safe odds range (1.50 - 2.00)
             
-        url = f"https://api.the-odds-api.com/v4/sports/{league}/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=h2h"
+        url = f"https://api.the-odds-api.com/v4/sports/{league_key}/odds/?apiKey={ODDS_API_KEY}&regions=eu&markets=h2h"
         try:
-            res = requests.get(url, timeout=10)
+            res = requests.get(url, timeout=8)
             if res.status_code == 200:
                 events = res.json()
                 for event in events:
-                    # Check match start time (Date Filter)
                     commence_str = event.get('commence_time')
-                    if not commence_str:
-                        continue
+                    if not commence_str: continue
                         
                     commence_dt = datetime.fromisoformat(commence_str.replace('Z', '+00:00'))
-                    
-                    # STRICT CHECK: Match MUST start between now and next 36 hours
                     if commence_dt < (now_utc - timedelta(hours=2)) or commence_dt > max_lookahead:
-                        continue # Skip games scheduled for future days!
+                        continue
                     
                     home_team = event.get('home_team')
                     away_team = event.get('away_team')
@@ -100,36 +109,66 @@ def fetch_automated_predictions():
                         name = outcome.get('name')
                         price = outcome.get('price', 0)
                         
-                        # Filter heavy favorites (odds 1.18 to 1.45)
-                        if 1.18 <= price <= 1.45:
-                            match_name = f"{home_team} vs {away_team}"
-                            tip = f"{name} Win @ {price}"
+                        # ULTRA-SAFE FILTER: Focus strictly on heavy 1.10 - 1.30 odds
+                        if 1.10 <= price <= 1.32:
+                            match_title = f"{home_team} vs {away_team}"
+                            tip_text = f"{name} Win @ {price}"
                             
-                            if not any(m['name'] == match_name for m in selected_matches):
+                            if not any(m['teams'] == match_title for m in selected_matches):
                                 selected_matches.append({
-                                    "name": match_name,
-                                    "tip": tip,
+                                    "country": details['country'],
+                                    "league": details['name'],
+                                    "teams": match_title,
+                                    "tip": tip_text,
                                     "odd": price
                                 })
+                                accumulated_odds *= price
                                 break
+                    
+                    if accumulated_odds >= 1.50 and len(selected_matches) >= 2:
+                        break
         except Exception as e:
-            print(f"Error scanning league {league}: {e}")
+            print(f"Error fetching {league_key}: {e}")
 
-    if len(selected_matches) >= 2:
-        m1 = selected_matches[0]
-        m2 = selected_matches[1]
-        t_odds = round(m1['odd'] * m2['odd'], 2)
-        
-        DATA['match1_name'] = m1['name']
-        DATA['match1_tip']  = m1['tip']
-        DATA['match2_name'] = m2['name']
-        DATA['match2_tip']  = m2['tip']
-        DATA['total_odds']  = str(t_odds)
+    if selected_matches:
+        DATA['matches'] = selected_matches
+        DATA['total_odds'] = str(round(accumulated_odds, 2))
         DATA['last_updated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         save_data(DATA)
-        return True, f"Successfully auto-selected 2 TODAY matches! Total Odds: ~{t_odds}"
+        return True, f"Auto-selected {len(selected_matches)} Ultra-Safe Banker Matches! Total Odds: ~{round(accumulated_odds, 2)}"
     else:
-        return False, "No safe banker games starting within 24 hours found in active leagues."
+        return False, "No ultra-safe 99% banker games starting within 24 hours were found right now."
+
+
+# Function to fetch LiveScores
+def fetch_livescores():
+    scores_list = []
+    # Query major leagues for live scores
+    for league_key, details in list(LEAGUE_DETAILS.items())[:3]:
+        url = f"https://api.the-odds-api.com/v4/sports/{league_key}/scores/?apiKey={ODDS_API_KEY}&daysFrom=1"
+        try:
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                events = res.json()
+                for e in events:
+                    if e.get('completed') is False or e.get('scores'):
+                        home = e.get('home_team')
+                        away = e.get('away_team')
+                        scores = e.get('scores')
+                        
+                        score_str = "VS (Not Started)"
+                        if scores:
+                            s_dict = {s['name']: s['score'] for s in scores}
+                            score_str = f"{s_dict.get(home, 0)} - {s_dict.get(away, 0)}"
+                            
+                        scores_list.append(f"{details['country']} {details['name']}:\n⚽ {home} {score_str} {away}")
+                        if len(scores_list) >= 4: break
+        except Exception as ex:
+            pass
+            
+    if not scores_list:
+        return "⚡ **LIVE SCORES UPDATE** ⚡\n\nNo live matches currently in play. Check back during match time!"
+    return "⚡ **LIVE SCORES UPDATE** ⚡\n-----------------------------------\n" + "\n\n".join(scores_list)
 
 
 # ==========================================
@@ -137,7 +176,6 @@ def fetch_automated_predictions():
 # ==========================================
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# QUICK COMMAND: /code (Update SportyBet Booking Code)
 @bot.message_handler(commands=['code'])
 def update_code_only(message):
     try:
@@ -148,61 +186,19 @@ def update_code_only(message):
             
         DATA['sportybet_code'] = new_code
         save_data(DATA)
-        
-        reply = (
-            f"✅ **SPORTYBET CODE UPDATED!** 🔑\n\n"
-            f"New Code: `{new_code}`\n"
-            f"🌐 *Updated instantly on Website & Bot!*"
-        )
-        bot.reply_to(message, reply, parse_mode="Markdown")
+        bot.reply_to(message, f"✅ **SPORTYBET CODE UPDATED:** `{new_code}`", parse_mode="Markdown")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Error: {str(e)}")
 
-# COMMAND: /fetch (Force instant auto-scan)
 @bot.message_handler(commands=['fetch'])
 def trigger_fetch(message):
-    bot.reply_to(message, "🔍 Scanning live football markets for TODAY'S 1.50 - 2.00 odds... Please wait.")
+    bot.reply_to(message, "🔍 Scanning global leagues for 99% Banker Matches & Odds... Please wait.")
     success, msg = fetch_automated_predictions()
     if success:
-        reply = (
-            f"✅ **AUTO-FETCH COMPLETE!** 🔥\n\n"
-            f"📌 **Match 1:** {DATA['match1_name']} ({DATA['match1_tip']})\n"
-            f"📌 **Match 2:** {DATA['match2_name']} ({DATA['match2_tip']})\n"
-            f"📊 **Total Odds:** ~{DATA['total_odds']}\n\n"
-            f"👉 *Send `/code YOURCODE` to add today's SportyBet code!*"
-        )
+        reply = f"✅ **AUTO-FETCH COMPLETE!** 🔥\n\n{msg}\n\n👉 Send `/code YOURCODE` to attach SportyBet Booking Code!"
     else:
-        reply = f"⚠️ {msg}\nNo games starting today met the safe criteria. You can manually set games using `/update`."
+        reply = f"⚠️ {msg}"
     bot.reply_to(message, reply, parse_mode="Markdown")
-
-# COMMAND: /update (Full Manual Override)
-@bot.message_handler(commands=['update'])
-def update_predictions(message):
-    try:
-        raw_text = message.text.replace('/update', '').strip()
-        parts = [p.strip() for p in raw_text.split('|')]
-        
-        if len(parts) < 7:
-            bot.reply_to(message, "❌ Format: `/update willys123 | Match 1 | Tip 1 | Match 2 | Tip 2 | Odds | Code`", parse_mode="Markdown")
-            return
-
-        if parts[0] != ADMIN_PASSWORD:
-            bot.reply_to(message, "⛔ Invalid password.")
-            return
-
-        DATA['match1_name'] = parts[1]
-        DATA['match1_tip']  = parts[2]
-        DATA['match2_name'] = parts[3]
-        DATA['match2_tip']  = parts[4]
-        DATA['total_odds']  = parts[5]
-        DATA['sportybet_code'] = parts[6]
-        DATA['last_updated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        save_data(DATA)
-        bot.reply_to(message, "✅ **PREDICTIONS UPDATED MANUALLY!**", parse_mode="Markdown")
-
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {str(e)}")
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -210,9 +206,10 @@ def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     btn_odds = types.KeyboardButton("🎯 Today's Safe 2-Odds")
     btn_code = types.KeyboardButton("📱 SportyBet Booking Code")
+    btn_scores = types.KeyboardButton("⚡ LiveScores")
     btn_vip = types.KeyboardButton("👑 VIP Group Info")
     btn_contact = types.KeyboardButton("📞 Contact Support")
-    markup.add(btn_odds, btn_code, btn_vip, btn_contact)
+    markup.add(btn_odds, btn_code, btn_scores, btn_vip, btn_contact)
     
     msg = (
         f"Welcome **{user_name}** to **Willys Media World Predictions**! ⚽🔥\n\n"
@@ -224,26 +221,34 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_menu(message):
     if message.text == "🎯 Today's Safe 2-Odds":
+        matches_text = ""
+        for i, m in enumerate(DATA['matches'], 1):
+            matches_text += f"📌 **Match {i}:** {m['country']} - {m['league']}\n"
+            matches_text += f"⚽ **Teams:** {m['teams']}\n"
+            matches_text += f"💡 **Tip:** {m['tip']}\n\n"
+            
         text = (
-            f"⚽ **TODAY'S SAFE 1.50 - 2.00 ODDS** ⚽\n"
+            f"⚽ **TODAY'S SAFE 1.50 - 2.00 BANKER TICKET** ⚽\n"
             f"-----------------------------------\n"
-            f"📌 **Match 1:** {DATA['match1_name']}\n"
-            f"💡 **Tip:** {DATA['match1_tip']}\n\n"
-            f"📌 **Match 2:** {DATA['match2_name']}\n"
-            f"💡 **Tip:** {DATA['match2_tip']}\n\n"
-            f"📊 **Total Odds:** ~{DATA['total_odds']}\n"
+            f"{matches_text}"
+            f"📊 **Total Combined Odds:** ~{DATA['total_odds']}\n"
             f"-----------------------------------\n"
             f"🔑 **SportyBet Code:** `{DATA['sportybet_code']}`\n\n"
-            f"⚠️ *Bet responsibly! Always manage your stake.*"
+            f"⚠️ *Bet responsibly! Manage your stake.*"
         )
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+    elif message.text == "⚡ LiveScores":
+        bot.send_message(message.chat.id, "⌛ Fetching live match scores...", parse_mode="Markdown")
+        ls_text = fetch_livescores()
+        bot.send_message(message.chat.id, ls_text, parse_mode="Markdown")
 
     elif message.text == "📱 SportyBet Booking Code":
         text = (
             f"📱 **SPORTYBET BOOKING CODE** 📱\n\n"
             f"🔑 **Code:** `{DATA['sportybet_code']}` (Tap to copy)\n"
             f"🌐 **Platform:** SportyBet.com\n\n"
-            f"👉 [Click Here to Play Games on SportyBet]({DATA['affiliate_link']})"
+            f"👉 [Click Here to Load Slip on SportyBet]({DATA['affiliate_link']})"
         )
         bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
 
@@ -272,6 +277,7 @@ def handle_menu(message):
 def run_bot():
     bot.infinity_polling()
 
+
 # ==========================================
 # 2. FLASK WEBSITE ENGINE
 # ==========================================
@@ -293,9 +299,11 @@ HTML_TEMPLATE = """
         p.subtitle { color: #94a3b8; font-size: 13px; }
         .card { background-color: #1e293b; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; text-align: left; }
         .card h2 { color: #38bdf8; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
-        .match { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background: #0f172a; padding: 10px; border-radius: 8px; }
-        .match-info { font-size: 13px; font-weight: bold; }
+        .league-badge { font-size: 11px; color: #fbbf24; font-weight: bold; margin-bottom: 3px; }
+        .match { margin-bottom: 12px; background: #0f172a; padding: 10px; border-radius: 8px; border-left: 3px solid #22c55e; }
+        .match-info { font-size: 13px; font-weight: bold; color: #ffffff; }
         .tip { color: #22c55e; font-size: 12px; margin-top: 3px; }
+        .total-odds { background: #334155; padding: 8px; border-radius: 6px; text-align: center; color: #22c55e; font-weight: bold; margin-top: 10px; font-size: 14px; }
         .code-box { background: #0284c7; color: white; padding: 12px; border-radius: 8px; text-align: center; margin-top: 12px; font-weight: bold; font-size: 14px; }
         .code-box span { background: #0f172a; padding: 4px 10px; border-radius: 4px; font-family: monospace; letter-spacing: 2px; color: #38bdf8; }
         .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-align: center; }
@@ -309,28 +317,24 @@ HTML_TEMPLATE = """
 <div class="container">
     <div class="header">
         <h1>WILLYS MEDIA WORLD</h1>
-        <p class="subtitle">🎯 Auto-Analyzed 1.50 - 2.00 Safe Odds</p>
+        <p class="subtitle">🎯 Auto-Analyzed 99% Banker 2-Odds</p>
     </div>
     
     <div class="card">
-        <h2>⚽ Today's Safe 2-Odds</h2>
+        <h2>⚽ Today's Banker Accumulator</h2>
         
+        {% for match in data['matches'] %}
         <div class="match">
-            <div>
-                <div class="match-info">{{ data['match1_name'] }}</div>
-                <div class="tip">Tip: {{ data['match1_tip'] }}</div>
-            </div>
+            <div class="league-badge">{{ match['country'] }} - {{ match['league'] }}</div>
+            <div class="match-info">{{ match['teams'] }}</div>
+            <div class="tip">Tip: {{ match['tip'] }}</div>
         </div>
+        {% endfor %}
         
-        <div class="match">
-            <div>
-                <div class="match-info">{{ data['match2_name'] }}</div>
-                <div class="tip">Tip: {{ data['match2_tip'] }}</div>
-            </div>
-        </div>
+        <div class="total-odds">📊 Combined Odds: ~{{ data['total_odds'] }}</div>
         
         <div class="code-box">SportyBet Code: <span>{{ data['sportybet_code'] }}</span></div>
-        <a href="{{ data['affiliate_link'] }}" target="_blank" class="btn btn-sporty">🎰 Play Games on SportyBet</a>
+        <a href="{{ data['affiliate_link'] }}" target="_blank" class="btn btn-sporty">🎰 Load Slip on SportyBet</a>
     </div>
 
     <div class="card">
@@ -359,3 +363,4 @@ if __name__ == '__main__':
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
+    
