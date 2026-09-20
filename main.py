@@ -5,7 +5,7 @@ from flask import Flask, render_template_string
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # ==========================================
 # CONFIGURATION & API KEYS
@@ -14,12 +14,17 @@ ODDS_API_KEY = "a25ddc2f3ceffcb7f959e224f6a40d4f"
 ADMIN_PASSWORD = "willys123"
 BOT_TOKEN = "8700629519:AAFUXLN7K7XrS0DTMQ_sULOnlAvLIHc-SrU"
 
+# Expanded leagues list to cover weekdays & weekends
 SPORTS_LEAGUES = [
     'soccer_epl',
     'soccer_spain_la_liga',
     'soccer_germany_bundesliga',
     'soccer_italy_serie_a',
-    'soccer_france_ligue_one'
+    'soccer_france_ligue_one',
+    'soccer_uefa_champs_league',
+    'soccer_uefa_europa_league',
+    'soccer_netherlands_eredivisie',
+    'soccer_portugal_primeira_liga'
 ]
 
 DEFAULT_DATA = {
@@ -52,11 +57,15 @@ def save_data(data):
 DATA = load_data()
 
 # ==========================================
-# AUTOMATED MATCH FETCHING ENGINE
+# AUTOMATED MATCH FETCHING ENGINE (STRICT TODAY FILTER)
 # ==========================================
 def fetch_automated_predictions():
     global DATA
     selected_matches = []
+    
+    # Define time window: From now until 36 hours from now
+    now_utc = datetime.now(timezone.utc)
+    max_lookahead = now_utc + timedelta(hours=36)
     
     for league in SPORTS_LEAGUES:
         if len(selected_matches) >= 2:
@@ -68,6 +77,17 @@ def fetch_automated_predictions():
             if res.status_code == 200:
                 events = res.json()
                 for event in events:
+                    # Check match start time (Date Filter)
+                    commence_str = event.get('commence_time')
+                    if not commence_str:
+                        continue
+                        
+                    commence_dt = datetime.fromisoformat(commence_str.replace('Z', '+00:00'))
+                    
+                    # STRICT CHECK: Match MUST start between now and next 36 hours
+                    if commence_dt < (now_utc - timedelta(hours=2)) or commence_dt > max_lookahead:
+                        continue # Skip games scheduled for future days!
+                    
                     home_team = event.get('home_team')
                     away_team = event.get('away_team')
                     bookmakers = event.get('bookmakers', [])
@@ -80,7 +100,8 @@ def fetch_automated_predictions():
                         name = outcome.get('name')
                         price = outcome.get('price', 0)
                         
-                        if 1.20 <= price <= 1.45:
+                        # Filter heavy favorites (odds 1.18 to 1.45)
+                        if 1.18 <= price <= 1.45:
                             match_name = f"{home_team} vs {away_team}"
                             tip = f"{name} Win @ {price}"
                             
@@ -106,9 +127,9 @@ def fetch_automated_predictions():
         DATA['total_odds']  = str(t_odds)
         DATA['last_updated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         save_data(DATA)
-        return True, f"Successfully auto-selected 2 matches! Total Odds: ~{t_odds}"
+        return True, f"Successfully auto-selected 2 TODAY matches! Total Odds: ~{t_odds}"
     else:
-        return False, "Not enough safe banker games found in current live markets."
+        return False, "No safe banker games starting within 24 hours found in active leagues."
 
 
 # ==========================================
@@ -116,7 +137,7 @@ def fetch_automated_predictions():
 # ==========================================
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# QUICK COMMAND: /code (Update SportyBet Booking Code in 1 Second)
+# QUICK COMMAND: /code (Update SportyBet Booking Code)
 @bot.message_handler(commands=['code'])
 def update_code_only(message):
     try:
@@ -140,7 +161,7 @@ def update_code_only(message):
 # COMMAND: /fetch (Force instant auto-scan)
 @bot.message_handler(commands=['fetch'])
 def trigger_fetch(message):
-    bot.reply_to(message, "🔍 Scanning live football markets for 1.50 - 2.00 odds... Please wait.")
+    bot.reply_to(message, "🔍 Scanning live football markets for TODAY'S 1.50 - 2.00 odds... Please wait.")
     success, msg = fetch_automated_predictions()
     if success:
         reply = (
@@ -151,7 +172,7 @@ def trigger_fetch(message):
             f"👉 *Send `/code YOURCODE` to add today's SportyBet code!*"
         )
     else:
-        reply = f"⚠️ {msg}\nDefault/stored predictions retained."
+        reply = f"⚠️ {msg}\nNo games starting today met the safe criteria. You can manually set games using `/update`."
     bot.reply_to(message, reply, parse_mode="Markdown")
 
 # COMMAND: /update (Full Manual Override)
@@ -338,4 +359,3 @@ if __name__ == '__main__':
     bot_thread.start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-    
