@@ -14,7 +14,6 @@ ODDS_API_KEY = "a25ddc2f3ceffcb7f959e224f6a40d4f"
 ADMIN_PASSWORD = "willys123"
 BOT_TOKEN = "8700629519:AAFUXLN7K7XrS0DTMQ_sULOnlAvLIHc-SrU"
 
-# Preferred football leagues for high-probability banker games
 SPORTS_LEAGUES = [
     'soccer_epl',
     'soccer_spain_la_liga',
@@ -29,7 +28,7 @@ DEFAULT_DATA = {
     "match2_name": "Barcelona vs Mallorca",
     "match2_tip": "Over 1.5 Goals @ 1.22",
     "total_odds": "1.56",
-    "sportybet_code": "AUTO-GENERATED",
+    "sportybet_code": "PENDING",
     "affiliate_link": "https://www.sportybet.com",
     "last_updated": "Default"
 }
@@ -72,26 +71,19 @@ def fetch_automated_predictions():
                     home_team = event.get('home_team')
                     away_team = event.get('away_team')
                     bookmakers = event.get('bookmakers', [])
-                    
-                    if not bookmakers:
-                        continue
-                        
+                    if not bookmakers: continue
                     markets = bookmakers[0].get('markets', [])
-                    if not markets:
-                        continue
-                        
+                    if not markets: continue
                     outcomes = markets[0].get('outcomes', [])
                     
                     for outcome in outcomes:
                         name = outcome.get('name')
                         price = outcome.get('price', 0)
                         
-                        # Look for heavy favorites (odds between 1.20 and 1.45)
                         if 1.20 <= price <= 1.45:
                             match_name = f"{home_team} vs {away_team}"
                             tip = f"{name} Win @ {price}"
                             
-                            # Avoid duplicates
                             if not any(m['name'] == match_name for m in selected_matches):
                                 selected_matches.append({
                                     "name": match_name,
@@ -124,6 +116,27 @@ def fetch_automated_predictions():
 # ==========================================
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# QUICK COMMAND: /code (Update SportyBet Booking Code in 1 Second)
+@bot.message_handler(commands=['code'])
+def update_code_only(message):
+    try:
+        new_code = message.text.replace('/code', '').strip().upper()
+        if not new_code:
+            bot.reply_to(message, "❌ Please provide a booking code.\nExample: `/code BC982A1`", parse_mode="Markdown")
+            return
+            
+        DATA['sportybet_code'] = new_code
+        save_data(DATA)
+        
+        reply = (
+            f"✅ **SPORTYBET CODE UPDATED!** 🔑\n\n"
+            f"New Code: `{new_code}`\n"
+            f"🌐 *Updated instantly on Website & Bot!*"
+        )
+        bot.reply_to(message, reply, parse_mode="Markdown")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Error: {str(e)}")
+
 # COMMAND: /fetch (Force instant auto-scan)
 @bot.message_handler(commands=['fetch'])
 def trigger_fetch(message):
@@ -135,13 +148,13 @@ def trigger_fetch(message):
             f"📌 **Match 1:** {DATA['match1_name']} ({DATA['match1_tip']})\n"
             f"📌 **Match 2:** {DATA['match2_name']} ({DATA['match2_tip']})\n"
             f"📊 **Total Odds:** ~{DATA['total_odds']}\n\n"
-            f"🌐 *Website & Bot updated automatically!*"
+            f"👉 *Send `/code YOURCODE` to add today's SportyBet code!*"
         )
     else:
         reply = f"⚠️ {msg}\nDefault/stored predictions retained."
     bot.reply_to(message, reply, parse_mode="Markdown")
 
-# COMMAND: /update (Manual Override)
+# COMMAND: /update (Full Manual Override)
 @bot.message_handler(commands=['update'])
 def update_predictions(message):
     try:
