@@ -1,11 +1,10 @@
 import threading
 import telebot
 from telebot import types
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, redirect
 import os
 import json
 import requests
-import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 # ==========================================
@@ -14,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 ODDS_API_KEY = "a25ddc2f3ceffcb7f959e224f6a40d4f"
 ADMIN_PASSWORD = "willys123"
 BOT_TOKEN = "8700629519:AAFUXLN7K7XrS0DTMQ_sULOnlAvLIHc-SrU"
+SITE_DOMAIN = "https://willys-predictions.onrender.com"
 
 LEAGUE_DETAILS = {
     'soccer_epl': {'name': 'Premier League', 'country': '🏴󠁧󠁢󠁥󠁮󠁧󠁿 England'},
@@ -25,45 +25,48 @@ LEAGUE_DETAILS = {
     'soccer_uefa_europa_league': {'name': 'Europa League', 'country': '🇪🇺 UEFA'}
 }
 
-# DEFAULT MULTI-MATCH ULTRA-SAFE ACCUMULATOR (Fallback Data)
 DEFAULT_DATA = {
     "matches": [
         {
+            "id": 1,
             "country": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 England",
             "league": "Premier League",
             "teams": "Manchester City vs Luton",
             "tip": "Home Win or Draw (1X)",
             "odd": 1.08,
-            "livescore_url": "https://www.google.com/search?q=" + urllib.parse.quote("Manchester City vs Luton livescore")
+            "status": "Scheduled / Live Tracking Active"
         },
         {
+            "id": 2,
             "country": "🇪🇸 Spain",
             "league": "La Liga",
             "teams": "Real Madrid vs Cadiz",
             "tip": "Over 0.5 Goals",
             "odd": 1.12,
-            "livescore_url": "https://www.google.com/search?q=" + urllib.parse.quote("Real Madrid vs Cadiz livescore")
+            "status": "Scheduled / Live Tracking Active"
         },
         {
+            "id": 3,
             "country": "🇩🇪 Germany",
             "league": "Bundesliga",
             "teams": "Bayern Munich vs Cologne",
             "tip": "Home Win (1)",
             "odd": 1.15,
-            "livescore_url": "https://www.google.com/search?q=" + urllib.parse.quote("Bayern Munich vs Cologne livescore")
+            "status": "Scheduled / Live Tracking Active"
         },
         {
+            "id": 4,
             "country": "🇫🇷 France",
             "league": "Ligue 1",
             "teams": "PSG vs Clermont",
             "tip": "Over 1.5 Goals",
             "odd": 1.18,
-            "livescore_url": "https://www.google.com/search?q=" + urllib.parse.quote("PSG vs Clermont livescore")
+            "status": "Scheduled / Live Tracking Active"
         }
     ],
     "total_odds": "1.64",
     "sportybet_code": "BC982A1",
-    "affiliate_link": "https://www.sportybet.com",
+    "affiliate_link": "https://www.sportybet.com/ng/",
     "last_updated": "Default"
 }
 
@@ -87,7 +90,7 @@ DATA = load_data()
 
 
 # ==========================================
-# MULTI-MATCH ULTRA-SAFE ACCUMULATOR SCANNER
+# AUTOMATED MATCH FETCHING ENGINE
 # ==========================================
 def fetch_automated_predictions():
     global DATA
@@ -97,6 +100,7 @@ def fetch_automated_predictions():
     now_utc = datetime.now(timezone.utc)
     max_lookahead = now_utc + timedelta(hours=36)
     
+    match_id_counter = 1
     for league_key, details in LEAGUE_DETAILS.items():
         if accumulated_odds >= 1.55 and len(selected_matches) >= 3:
             break
@@ -126,21 +130,21 @@ def fetch_automated_predictions():
                         name = outcome.get('name')
                         price = outcome.get('price', 0)
                         
-                        # MINIMUM ULTRA-SAFE ODDS RANGE (1.08 to 1.28)
                         if 1.08 <= price <= 1.28:
                             match_title = f"{home_team} vs {away_team}"
                             tip_text = f"{name} Win/Safe @ {price}"
-                            ls_url = "https://www.google.com/search?q=" + urllib.parse.quote(f"{match_title} livescore")
                             
                             if not any(m['teams'] == match_title for m in selected_matches):
                                 selected_matches.append({
+                                    "id": match_id_counter,
                                     "country": details['country'],
                                     "league": details['name'],
                                     "teams": match_title,
                                     "tip": tip_text,
                                     "odd": price,
-                                    "livescore_url": ls_url
+                                    "status": "Scheduled / Live Tracking Active"
                                 })
+                                match_id_counter += 1
                                 accumulated_odds *= price
                                 break
                     
@@ -154,9 +158,9 @@ def fetch_automated_predictions():
         DATA['total_odds'] = str(round(accumulated_odds, 2))
         DATA['last_updated'] = datetime.now().strftime("%Y-%m-%d %H:%M")
         save_data(DATA)
-        return True, f"Auto-selected {len(selected_matches)} Ultra-Safe Banker Matches! Total Odds: ~{round(accumulated_odds, 2)}"
+        return True, f"Auto-selected {len(selected_matches)} Banker Matches! Total Odds: ~{round(accumulated_odds, 2)}"
     else:
-        return False, "Using default 99% banker accumulator ticket."
+        return False, "Using stored 99% banker accumulator ticket."
 
 
 # ==========================================
@@ -180,7 +184,7 @@ def update_code_only(message):
 
 @bot.message_handler(commands=['fetch'])
 def trigger_fetch(message):
-    bot.reply_to(message, "🔍 Scanning global leagues for 99% Minimum-Odds Banker matches... Please wait.")
+    bot.reply_to(message, "🔍 Scanning global leagues for 99% Banker matches... Please wait.")
     def run_fetch():
         success, msg = fetch_automated_predictions()
         reply = f"✅ **AUTO-FETCH COMPLETE!** 🔥\n\n{msg}\n\n👉 Send `/code YOURCODE` to update SportyBet Code!"
@@ -199,7 +203,7 @@ def send_welcome(message):
     
     msg = (
         f"Welcome **{user_name}** to **Willys Media World Predictions**! ⚽🔥\n\n"
-        f"We specialize in daily high-probability **1.50 - 2.00 Odds** using multi-match minimum-odds accumulators.\n\n"
+        f"We specialize in daily high-probability **1.50 - 2.00 Odds** accumulators.\n\n"
         f"Please select an option below:"
     )
     bot.reply_to(message, msg, reply_markup=markup, parse_mode="Markdown")
@@ -210,8 +214,9 @@ def handle_menu(message):
         matches_text = ""
         matches = DATA.get('matches', DEFAULT_DATA['matches'])
         for i, m in enumerate(matches, 1):
+            subpage_url = f"{SITE_DOMAIN}/match/{m.get('id', i)}"
             matches_text += f"📌 **Match {i}:** {m.get('country','⚽')} {m.get('league','')}\n"
-            matches_text += f"⚽ **Teams:** [{m.get('teams','')}]({m.get('livescore_url','#')}) *(Click to View LiveScore)*\n"
+            matches_text += f"⚽ **Teams:** [{m.get('teams','')}]({subpage_url}) *(Tap for LiveScore)*\n"
             matches_text += f"💡 **Tip:** {m.get('tip','')}\n\n"
             
         text = (
@@ -230,7 +235,7 @@ def handle_menu(message):
             f"📱 **SPORTYBET BOOKING CODE** 📱\n\n"
             f"🔑 **Code:** `{DATA.get('sportybet_code', 'BC982A1')}` (Tap to copy)\n"
             f"🌐 **Platform:** SportyBet.com\n\n"
-            f"👉 [Click Here to Load Slip on SportyBet]({DATA.get('affiliate_link', 'https://www.sportybet.com')})"
+            f"👉 [Click Here to Load Slip on SportyBet]({DATA.get('affiliate_link', 'https://www.sportybet.com/ng/')})"
         )
         bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
 
@@ -268,7 +273,8 @@ def run_bot_loop():
 # ==========================================
 app = Flask(__name__)
 
-HTML_TEMPLATE = """
+# MAIN HOME TEMPLATE
+HOME_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -287,18 +293,25 @@ HTML_TEMPLATE = """
         .league-badge { font-size: 11px; color: #fbbf24; font-weight: bold; margin-bottom: 3px; }
         .match { margin-bottom: 12px; background: #0f172a; padding: 12px; border-radius: 8px; border-left: 3px solid #22c55e; text-decoration: none; display: block; color: inherit; }
         .match:hover { background: #1e293b; }
-        .match-info { font-size: 14px; font-weight: bold; color: #38bdf8; text-decoration: underline; }
+        .match-info { font-size: 14px; font-weight: bold; color: #38bdf8; }
         .tip { color: #22c55e; font-size: 12px; margin-top: 4px; }
-        .click-hint { font-size: 10px; color: #64748b; margin-top: 2px; }
+        .click-hint { font-size: 10px; color: #64748b; margin-top: 4px; }
         .total-odds { background: #334155; padding: 10px; border-radius: 6px; text-align: center; color: #22c55e; font-weight: bold; margin-top: 10px; font-size: 15px; }
         .code-box { background: #0284c7; color: white; padding: 12px; border-radius: 8px; text-align: center; margin-top: 12px; font-weight: bold; font-size: 14px; }
         .code-box span { background: #0f172a; padding: 4px 10px; border-radius: 4px; font-family: monospace; letter-spacing: 2px; color: #38bdf8; }
-        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-align: center; }
+        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-align: center; cursor: pointer; border: none; }
         .btn-telegram { background-color: #0284c7; color: white; }
         .btn-whatsapp { background-color: #22c55e; color: white; }
         .btn-sporty { background-color: #e11d48; color: white; margin-top: 10px; }
         .footer { color: #64748b; font-size: 11px; margin-top: 25px; line-height: 1.5; }
     </style>
+    <script>
+        function loadSportyBetSlip(code, affiliateUrl) {
+            navigator.clipboard.writeText(code);
+            alert("🔑 Booking Code [" + code + "] copied to clipboard! Opening SportyBet...");
+            window.open(affiliateUrl, '_blank');
+        }
+    </script>
 </head>
 <body>
 <div class="container">
@@ -309,21 +322,21 @@ HTML_TEMPLATE = """
     
     <div class="card">
         <h2>⚽ Today's Accumulator Ticket</h2>
-        <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">💡 <i>Tap any match below to open LiveScores!</i></p>
+        <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">💡 <i>Tap any match below to view Internal LiveScore page!</i></p>
         
         {% for match in data.get('matches', []) %}
-        <a href="{{ match.get('livescore_url','#') }}" target="_blank" class="match">
+        <a href="/match/{{ match.get('id', loop.index) }}" class="match">
             <div class="league-badge">{{ match.get('country','') }} - {{ match.get('league','') }}</div>
             <div class="match-info">⚽ {{ match.get('teams','') }}</div>
             <div class="tip">Tip: {{ match.get('tip','') }}</div>
-            <div class="click-hint">⚡ Click to view LiveScore</div>
+            <div class="click-hint">⚡ Tap to view LiveScore Subpage</div>
         </a>
         {% endfor %}
         
         <div class="total-odds">📊 Combined Ticket Odds: ~{{ data.get('total_odds', '1.64') }}</div>
         
         <div class="code-box">SportyBet Code: <span>{{ data.get('sportybet_code', 'BC982A1') }}</span></div>
-        <a href="{{ data.get('affiliate_link', 'https://www.sportybet.com') }}" target="_blank" class="btn btn-sporty">🎰 Load Slip on SportyBet</a>
+        <button onclick="loadSportyBetSlip('{{ data.get('sportybet_code', 'BC982A1') }}', '{{ data.get('affiliate_link', 'https://www.sportybet.com/ng/') }}')" class="btn btn-sporty">🎰 Load Slip on SportyBet</button>
     </div>
 
     <div class="card">
@@ -343,9 +356,65 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# MATCH DETAILS & LIVESCORE SUBPAGE TEMPLATE
+MATCH_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ match['teams'] }} - Willys Media World</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; padding: 15px; text-align: center; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .back-btn { display: inline-block; background: #334155; color: #38bdf8; padding: 8px 15px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: bold; margin-bottom: 15px; text-align: left; }
+        .card { background-color: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; text-align: left; }
+        .league { font-size: 12px; color: #fbbf24; font-weight: bold; text-transform: uppercase; }
+        h1 { color: #ffffff; font-size: 20px; margin: 10px 0; }
+        .badge { display: inline-block; background: #22c55e; color: #000; font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 4px; margin-bottom: 15px; }
+        .live-box { background: #0f172a; padding: 15px; border-radius: 10px; border: 1px solid #0284c7; text-align: center; margin-top: 15px; }
+        .live-title { color: #38bdf8; font-size: 14px; font-weight: bold; margin-bottom: 8px; }
+        .score { font-size: 24px; font-weight: bold; color: #22c55e; letter-spacing: 2px; }
+        .status { font-size: 11px; color: #94a3b8; margin-top: 5px; }
+        .btn { display: block; width: 100%; padding: 12px; margin-top: 15px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-align: center; background: #e11d48; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="text-align:left;">
+        <a href="/" class="back-btn">⬅ Back to Accumulator Ticket</a>
+    </div>
+
+    <div class="card">
+        <div class="league">{{ match['country'] }} - {{ match['league'] }}</div>
+        <h1>⚽ {{ match['teams'] }}</h1>
+        <div class="badge">Banker Tip: {{ match['tip'] }}</div>
+        
+        <div class="live-box">
+            <div class="live-title">⚡ LIVESCORE CENTER</div>
+            <div class="score">0 - 0</div>
+            <div class="status">● {{ match['status'] }}</div>
+        </div>
+
+        <a href="{{ data.get('affiliate_link', 'https://www.sportybet.com/ng/') }}" target="_blank" class="btn">🎰 Bet Match on SportyBet</a>
+    </div>
+</div>
+</body>
+</html>
+"""
+
 @app.route('/')
 def home():
-    return render_template_string(HTML_TEMPLATE, data=DATA)
+    return render_template_string(HOME_HTML, data=DATA)
+
+@app.route('/match/<int:match_id>')
+def match_detail(match_id):
+    matches = DATA.get('matches', DEFAULT_DATA['matches'])
+    selected = next((m for m in matches if m.get('id') == match_id), None)
+    if not selected and matches:
+        selected = matches[0]
+    return render_template_string(MATCH_HTML, match=selected, data=DATA)
 
 if __name__ == '__main__':
     t = threading.Thread(target=run_bot_loop)
@@ -353,3 +422,4 @@ if __name__ == '__main__':
     t.start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
+    
