@@ -85,7 +85,7 @@ DEFAULT_DATA = {
         "bet9ja": "https://www.bet9ja.com",
         "oneXbet": "https://1xbet.com"
     },
-    "last_updated": "Default"
+    "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M WAT")
 }
 
 def load_data():
@@ -197,7 +197,6 @@ def auto_update_scheduler():
 # ==========================================
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
-# COMMAND: /code (Update SportyBet Code)
 @bot.message_handler(commands=['code'])
 def update_code_only(message):
     try:
@@ -213,7 +212,6 @@ def update_code_only(message):
     except Exception as e:
         bot.reply_to(message, f"⚠️ Error: {str(e)}")
 
-# COMMAND: /codes (Update All Bookmakers: SportyBet, Bet9ja, 1xBet)
 @bot.message_handler(commands=['codes'])
 def update_all_codes(message):
     try:
@@ -264,6 +262,197 @@ def send_welcome(message):
         f"Please select an option below:"
     )
     bot.reply_to(message, msg, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda message: True)
+def handle_menu(message):
+    codes = DATA.get('codes', DEFAULT_DATA['codes'])
+    links = DATA.get('links', DEFAULT_DATA['links'])
+    
+    if message.text == "🎯 Today's Safe 1.70 Odds":
+        matches_text = ""
+        matches = DATA.get('matches', DEFAULT_DATA['matches'])
+        for i, m in enumerate(matches, 1):
+            subpage_url = f"{SITE_DOMAIN}/match/{m.get('id', i)}"
+            matches_text += f"📌 **Match {i}:** {m.get('country','⚽')} {m.get('league','')}\n"
+            matches_text += f"⚽ **Teams:** [{m.get('teams','')}]({subpage_url})\n"
+            matches_text += f"⏰ **Time:** {m.get('time','Scheduled')} | **Score:** `{m.get('score','VS')}` ({m.get('status','')})\n"
+            matches_text += f"💡 **Tip:** {m.get('tip','')}\n\n"
+            
+        text = (
+            f"⚽ **TODAY'S 99% BANKER TICKET (~1.70 ODDS)** ⚽\n"
+            f"-----------------------------------\n"
+            f"{matches_text}"
+            f"📊 **Total Combined Odds:** ~{DATA.get('total_odds', '1.70')}\n"
+            f"-----------------------------------\n"
+            f"🔑 **BOOKMAKER BOOKING CODES:**\n"
+            f"🔴 **SportyBet:** `{codes.get('sportybet','BC982A1')}`\n"
+            f"🟢 **Bet9ja:** `{codes.get('bet9ja','B9J-77812')}`\n"
+            f"🔵 **1xBet:** `{codes.get('oneXbet','1X-99821')}`\n\n"
+            f"⚠️ *Bet responsibly! Manage your stake.*"
+        )
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
+
+    elif message.text == "📱 Booking Codes":
+        text = (
+            f"📱 **BOOKMAKER BOOKING CODES** 📱\n\n"
+            f"🔴 **SportyBet:** `{codes.get('sportybet','BC982A1')}`\n"
+            f"🟢 **Bet9ja:** `{codes.get('bet9ja','B9J-77812')}`\n"
+            f"🔵 **1xBet:** `{codes.get('oneXbet','1X-99821')}`\n\n"
+            f"👉 [Click Here to Open SportyBet]({links.get('sportybet')})\n"
+            f"👉 [Click Here to Open Bet9ja]({links.get('bet9ja')})"
+        )
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
+
+    elif message.text == "👑 VIP Group Info":
+        text = (
+            "👑 **WILLYS VIP WINNERS CLUB** 👑\n\n"
+            "✅ Daily ~1.70 Banker Accumulators\n"
+            "✅ 4-Day Rollover Strategy\n"
+            "💳 **Fee:** N3,000 / Month\n\n"
+            "📩 Click 'Contact Support' to chat with Admin on WhatsApp to join VIP!"
+        )
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+    elif message.text == "📞 Contact Support":
+        text = (
+            "🏢 **WILLYS MEDIA WORLD**\n"
+            "-----------------------------------\n"
+            "📍 **Location:** Ijebu-Imusin, Ogun State\n"
+            "📧 **Email:** willysmediaworld@gmail.com\n"
+            "📱 **Phone:** +2349018363715\n\n"
+            "💬 **WhatsApp Admin:** [Click Here to Chat](https://wa.me/2349018363715)\n"
+            "-----------------------------------"
+        )
+        bot.send_message(message.chat.id, text, parse_mode="Markdown", disable_web_page_preview=True)
+
+def run_bot_loop():
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=2, timeout=30)
+        except Exception:
+            time.sleep(3)
+
+# ==========================================
+# 2. FLASK WEBSITE ENGINE
+# ==========================================
+app = Flask(__name__)
+
+HOME_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Willys Media World - Daily 1.70 Odds Predictions</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; padding: 15px; text-align: center; }
+        .container { max-width: 500px; margin: 0 auto; }
+        
+        /* HEADER & TIME BANNER */
+        .header { background: linear-gradient(135deg, #1e293b, #334155); padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #475569; }
+        h1 { color: #22c55e; font-size: 22px; margin-bottom: 5px; }
+        p.subtitle { color: #94a3b8; font-size: 13px; }
+        
+        .time-banner {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px dashed #475569;
+            font-size: 12px;
+            color: #38bdf8;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-weight: 600;
+        }
+        .clock { color: #22c55e; font-family: monospace; font-size: 13px; font-weight: bold; }
+        .last-sync { font-size: 10px; color: #94a3b8; font-style: italic; }
+
+        .card { background-color: #1e293b; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; text-align: left; }
+        .card h2 { color: #38bdf8; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
+        .league-badge { font-size: 11px; color: #fbbf24; font-weight: bold; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .match-time { color: #38bdf8; font-size: 11px; }
+        .match { margin-bottom: 12px; background: #0f172a; padding: 12px; border-radius: 8px; border-left: 3px solid #22c55e; text-decoration: none; display: block; color: inherit; }
+        .match-info { font-size: 14px; font-weight: bold; color: #ffffff; }
+        .score-bar { font-size: 12px; color: #38bdf8; font-weight: bold; margin-top: 4px; background: #1e293b; padding: 3px 8px; border-radius: 4px; display: inline-block; }
+        .tip { color: #22c55e; font-size: 12px; margin-top: 4px; }
+        .total-odds { background: #334155; padding: 10px; border-radius: 6px; text-align: center; color: #22c55e; font-weight: bold; margin-top: 10px; font-size: 15px; }
+        
+        .code-row { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 8px 12px; border-radius: 6px; margin-top: 8px; border: 1px solid #334155; }
+        .code-label { font-size: 12px; font-weight: bold; color: #f8fafc; }
+        .code-input { background: #1e293b; border: 1px solid #0284c7; color: #38bdf8; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 13px; width: 100px; text-align: center; }
+        .copy-btn { background: #0284c7; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; }
+        
+        .btn { display: block; width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; text-align: center; border: none; cursor: pointer; }
+        .btn-sporty { background-color: #e11d48; color: white; margin-top: 12px; }
+        .btn-bet9ja { background-color: #15803d; color: white; }
+        .btn-telegram { background-color: #0284c7; color: white; }
+        .btn-whatsapp { background-color: #22c55e; color: white; }
+        .footer { color: #64748b; font-size: 11px; margin-top: 25px; line-height: 1.5; }
+    </style>
+    <script>
+        // LIVE DIGITAL CLOCK & TODAY'S DATE SCRIPT
+        function updateLiveClock() {
+            var now = new Date();
+            var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            var watTime = new Date(utc + (3600000 * 1)); // West Africa Time (UTC+1)
+            
+            var options = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            document.getElementById('currentDate').innerText = watTime.toLocaleDateString('en-GB', options);
+            
+            var hours = String(watTime.getHours()).padStart(2, '0');
+            var minutes = String(watTime.getMinutes()).padStart(2, '0');
+            var seconds = String(watTime.getSeconds()).padStart(2, '0');
+            document.getElementById('liveClock').innerText = hours + ":" + minutes + ":" + seconds + " WAT";
+        }
+        setInterval(updateLiveClock, 1000);
+        window.onload = updateLiveClock;
+
+        function copyInputCode(inputId, btnId) {
+            var input = document.getElementById(inputId);
+            input.select();
+            input.setSelectionRange(0, 99999);
+            try {
+                navigator.clipboard.writeText(input.value);
+            } catch(e) {
+                document.execCommand('copy');
+            }
+            var btn = document.getElementById(btnId);
+            btn.innerText = "COPIED!";
+            btn.style.backgroundColor = "#22c55e";
+            setTimeout(function(){
+                btn.innerText = "COPY";
+                btn.style.backgroundColor = "#0284c7";
+            }, 2000);
+        }
+    </script>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>WILLYS MEDIA WORLD</h1>
+        <p class="subtitle">🎯 99% Banker ~1.70 Odds Ticket</p>
+        
+        <!-- BENEATH HEADER: DATE & REAL RUN TIME -->
+        <div class="time-banner">
+            <div>📅 <span id="currentDate">Loading Date...</span></div>
+            <div>⚡ Real Run Time: <span id="liveClock" class="clock">00:00:00 WAT</span></div>
+            <div class="last-sync">🔄 Last Auto-Scan: {{ data.get('last_updated', 'Just Now') }}</div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>⚽ Today's Accumulator Ticket</h2>
+        <p style="font-size:11px; color:#94a3b8; margin-bottom:10px;">💡 <i>Auto-updated every 3 hours!</i></p>
+        
+        {% for match in data.get('matches', []) %}
+        <a href="/match/{{ match.get('id', loop.index) }}" class="match">
+            <div class="league-badge">
+                <span>{{ match.get('country','') }} - {{ match.get('league','') }}</span>
+                <span class="match-time">⏰ {{ match.get('time','Scheduled') }}</span>
+            </div>
+            <div class="match-info">⚽ {{ match.get('teams','') }}</div>
+            <div class="score-bar">Score: {{ match.get('score','VS') }} (    bot.reply_to(message, msg, reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: True)
 def handle_menu(message):
